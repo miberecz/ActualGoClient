@@ -1,7 +1,6 @@
 package ActualGoClient
 
 import (
-	"ActualInvestmentTracker/ActualGoClient/model"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"kod.3dora.eu/mqmq0/ActualGoClient/model"
 )
 
 type Client interface {
