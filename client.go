@@ -10,24 +10,45 @@ import (
 	"strings"
 	"sync"
 
-	"kod.3dora.eu/mqmq0/ActualGoClient/model"
+	"github.com/miberecz/ActualGoClient/model"
 )
 
+// Client defines the interface for interacting with the Actual Budget API.
+// It provides methods for fetching and manipulating budget data such as accounts,
+// transactions, categories, payees, and rules.
 type Client interface {
+	// GetAccounts retrieves all accounts for the configured budget.
 	GetAccounts() ([]model.Account, error)
+	// GetBalance retrieves the current balance for a specific account.
+	// The balance is returned as a float64, representing the value in the major currency unit (e.g., dollars).
 	GetBalance(accountID string) (float64, error)
+	// GetCategories retrieves all categories for the configured budget.
 	GetCategories() ([]model.Category, error)
+	// GetPayees retrieves all payees for the configured budget.
+	// This method utilizes an internal cache to reduce API calls.
 	GetPayees() ([]model.Payee, error)
+	// GetPayeeIDByName retrieves the ID of a payee by their name.
+	// It uses a cache for efficiency. If the cache is not populated, it will be fetched first.
 	GetPayeeIDByName(name string) (string, error)
+	// GetRules retrieves all rules for the configured budget.
+	// An optional stageFilter can be provided to filter rules by their stage (e.g., "pre").
 	GetRules(stageFilter string) ([]model.Rule, error)
+	// CreateTransaction creates a new transaction in a specific account.
 	CreateTransaction(accountID string, req model.CreateTransactionRequest) error
+	// CreateRule creates a new rule for the budget.
 	CreateRule(rule model.Rule) error
+	// UpdateRule updates an existing rule identified by its ID.
 	UpdateRule(ruleID string, rule model.Rule) error
+	// UpdateAccount updates the name of an existing account.
 	UpdateAccount(accountID string, newName string) error
+	// GetTransactions retrieves transactions for a specific account within a given date range.
+	// sinceDate and untilDate should be in "YYYY-MM-DD" format. They are optional.
 	GetTransactions(accountID, sinceDate, untilDate string) ([]model.Transaction, error)
+	// DeleteTransaction deletes a transaction by its ID.
 	DeleteTransaction(transactionID string) error
 }
 
+// httpClient implements the Client interface.
 type httpClient struct {
 	config        *model.Config
 	httpClient    *http.Client
@@ -37,7 +58,8 @@ type httpClient struct {
 	logger        *slog.Logger
 }
 
-// NewClient accepts logger
+// NewClient creates a new client for interacting with the Actual Budget API.
+// It requires a configuration object with API details and a slog.Logger for logging.
 func NewClient(config *model.Config, logger *slog.Logger) Client {
 	return &httpClient{
 		config:     config,
@@ -47,6 +69,8 @@ func NewClient(config *model.Config, logger *slog.Logger) Client {
 	}
 }
 
+// ensurePayeeCache populates the payee cache if it hasn't been fetched yet.
+// It is safe for concurrent use.
 func (c *httpClient) ensurePayeeCache() error {
 	c.cacheMutex.RLock()
 	fetched := c.payeesFetched
@@ -82,6 +106,7 @@ func (c *httpClient) ensurePayeeCache() error {
 	return nil
 }
 
+// getPayeesInternal performs the actual API call to fetch payees without caching logic.
 func (c *httpClient) getPayeesInternal() ([]model.Payee, error) {
 	url := fmt.Sprintf("%sbudgets/%s/payees", c.config.BaseURL, c.config.BudgetID)
 	resp, err := c.doRequest("GET", url, nil)
@@ -100,6 +125,8 @@ func (c *httpClient) getPayeesInternal() ([]model.Payee, error) {
 	return response.Data, nil
 }
 
+// GetPayees retrieves all payees for the configured budget.
+// This method utilizes an internal cache to reduce API calls.
 func (c *httpClient) GetPayees() ([]model.Payee, error) {
 	if err := c.ensurePayeeCache(); err != nil {
 		c.logger.Warn("Payee cache population failed, attempting direct fetch", "event", "GetPayeesWarn", "error", err)
@@ -118,6 +145,8 @@ func (c *httpClient) GetPayees() ([]model.Payee, error) {
 	return payees, nil
 }
 
+// GetPayeeIDByName retrieves the ID of a payee by their name.
+// It uses a cache for efficiency. If the cache is not populated, it will be fetched first.
 func (c *httpClient) GetPayeeIDByName(name string) (string, error) {
 	if err := c.ensurePayeeCache(); err != nil {
 		// Error already logged by ensurePayeeCache
@@ -185,6 +214,7 @@ func (c *httpClient) doRequest(method, url string, body io.Reader) (*http.Respon
 	return resp, nil
 }
 
+// GetCategories retrieves all categories for the configured budget.
 func (c *httpClient) GetCategories() ([]model.Category, error) {
 	url := fmt.Sprintf("%sbudgets/%s/categories", c.config.BaseURL, c.config.BudgetID)
 	resp, err := c.doRequest("GET", url, nil)
@@ -202,6 +232,7 @@ func (c *httpClient) GetCategories() ([]model.Category, error) {
 	return response.Data, nil
 }
 
+// CreateTransaction creates a new transaction in a specific account.
 func (c *httpClient) CreateTransaction(accountID string, req model.CreateTransactionRequest) error {
 	if accountID == "" {
 		err := fmt.Errorf("accountID cannot be empty for CreateTransaction")
@@ -254,6 +285,7 @@ func (c *httpClient) CreateTransaction(accountID string, req model.CreateTransac
 	return nil
 }
 
+// GetAccounts retrieves all accounts for the configured budget.
 func (c *httpClient) GetAccounts() ([]model.Account, error) {
 	url := fmt.Sprintf("%sbudgets/%s/accounts",
 		c.config.BaseURL,
@@ -274,6 +306,8 @@ func (c *httpClient) GetAccounts() ([]model.Account, error) {
 	return accounts.Data, nil
 }
 
+// GetBalance retrieves the current balance for a specific account.
+// The balance is returned as a float64, representing the value in the major currency unit (e.g., dollars).
 func (c *httpClient) GetBalance(accountID string) (float64, error) {
 	if accountID == "" {
 		err := fmt.Errorf("accountID cannot be empty for GetBalance")
@@ -301,6 +335,8 @@ func (c *httpClient) GetBalance(accountID string) (float64, error) {
 	return balance, nil
 }
 
+// GetRules retrieves all rules for the configured budget.
+// An optional stageFilter can be provided to filter rules by their stage (e.g., "pre").
 func (c *httpClient) GetRules(stageFilter string) ([]model.Rule, error) {
 	url := fmt.Sprintf("%sbudgets/%s/rules", c.config.BaseURL, c.config.BudgetID)
 	resp, err := c.doRequest("GET", url, nil)
@@ -331,6 +367,7 @@ func (c *httpClient) GetRules(stageFilter string) ([]model.Rule, error) {
 	return filtered, nil
 }
 
+// CreateRule creates a new rule for the budget.
 func (c *httpClient) CreateRule(rule model.Rule) error {
 	url := fmt.Sprintf("%sbudgets/%s/rules", c.config.BaseURL, c.config.BudgetID)
 	reqBody := model.CreateRuleRequest{Rule: rule}
@@ -349,6 +386,7 @@ func (c *httpClient) CreateRule(rule model.Rule) error {
 	return nil
 }
 
+// UpdateRule updates an existing rule identified by its ID.
 func (c *httpClient) UpdateRule(ruleID string, rule model.Rule) error {
 	if ruleID == "" {
 		err := fmt.Errorf("ruleID cannot be empty for UpdateRule")
@@ -378,6 +416,7 @@ func (c *httpClient) UpdateRule(ruleID string, rule model.Rule) error {
 	return nil
 }
 
+// UpdateAccount updates the name of an existing account.
 func (c *httpClient) UpdateAccount(accountID string, newName string) error {
 	if accountID == "" {
 		err := fmt.Errorf("accountID cannot be empty for UpdateAccount")
@@ -406,6 +445,8 @@ func (c *httpClient) UpdateAccount(accountID string, newName string) error {
 	return nil
 }
 
+// GetTransactions retrieves transactions for a specific account within a given date range.
+// sinceDate and untilDate should be in "YYYY-MM-DD" format. They are optional.
 func (c *httpClient) GetTransactions(accountID, sinceDate, untilDate string) ([]model.Transaction, error) {
 	if accountID == "" {
 		err := fmt.Errorf("accountID cannot be empty for GetTransactions")
@@ -444,6 +485,7 @@ func (c *httpClient) GetTransactions(accountID, sinceDate, untilDate string) ([]
 	return response.Data, nil
 }
 
+// DeleteTransaction deletes a transaction by its ID.
 func (c *httpClient) DeleteTransaction(transactionID string) error {
 	if transactionID == "" {
 		err := fmt.Errorf("transactionID cannot be empty for DeleteTransaction")

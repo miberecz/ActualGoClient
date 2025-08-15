@@ -1,3 +1,3 @@
-module kod.3dora.eu/mqmq0/ActualGoClient
+module github.com/miberecz/ActualGoClient
 
 go 1.23.5
