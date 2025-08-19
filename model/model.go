@@ -52,6 +52,18 @@ type CreateTransactionRequest struct {
 	Date            string      `json:"date"`
 }
 
+// CreatePayeeRequest is the request body for creating a new payee.
+type CreatePayeeRequest struct {
+	Payee struct {
+		Name string `json:"name"`
+	} `json:"payee"`
+}
+
+// CreatePayeeResponse is the API response for creating a new payee.
+type CreatePayeeResponse struct {
+	Data string `json:"data"` // The ID of the newly created payee.
+}
+
 // CreateRuleRequest is the request body for creating a new rule.
 type CreateRuleRequest struct {
 	Rule Rule `json:"rule"`

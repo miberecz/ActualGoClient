@@ -33,6 +33,8 @@ type Client interface {
 	// GetRules retrieves all rules for the configured budget.
 	// An optional stageFilter can be provided to filter rules by their stage (e.g., "pre").
 	GetRules(stageFilter string) ([]model.Rule, error)
+	// CreatePayee creates a new payee and returns its ID.
+	CreatePayee(name string) (string, error)
 	// CreateTransaction creates a new transaction in a specific account.
 	CreateTransaction(accountID string, req model.CreateTransactionRequest) error
 	// CreateRule creates a new rule for the budget.
@@ -230,6 +232,42 @@ func (c *httpClient) GetCategories() ([]model.Category, error) {
 	}
 	c.logger.Debug("Successfully fetched categories", "event", "GetCategoriesSuccess", "count", len(response.Data))
 	return response.Data, nil
+}
+
+// CreatePayee creates a new payee and returns its ID.
+func (c *httpClient) CreatePayee(name string) (string, error) {
+	url := fmt.Sprintf("%sbudgets/%s/payees", c.config.BaseURL, c.config.BudgetID)
+
+	requestPayload := model.CreatePayeeRequest{}
+	requestPayload.Payee.Name = name
+
+	body, err := json.Marshal(requestPayload)
+	if err != nil {
+		c.logger.Error("Failed to marshal CreatePayee request", "event", "MarshalError", "payee_name", name, "error", err)
+		return "", fmt.Errorf("marshaling CreatePayee request failed: %w", err)
+	}
+
+	resp, err := c.doRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("failed creating payee '%s': %w", name, err)
+	}
+	defer resp.Body.Close()
+
+	var response model.CreatePayeeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		c.logger.Error("Failed to decode CreatePayee response", "event", "DecodeError", "url", url, "error", err)
+		return "", fmt.Errorf("decoding CreatePayee response failed: %w", err)
+	}
+
+	newPayeeID := response.Data
+	c.logger.Info("Successfully created new payee", "event", "CreatePayeeSuccess", "payee_name", name, "payee_id", newPayeeID)
+
+	// Add the new payee to the cache to prevent duplicate creation
+	c.cacheMutex.Lock()
+	c.payeeCache[name] = newPayeeID
+	c.cacheMutex.Unlock()
+
+	return newPayeeID, nil
 }
 
 // CreateTransaction creates a new transaction in a specific account.
