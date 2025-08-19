@@ -48,6 +48,8 @@ type Client interface {
 	GetTransactions(accountID, sinceDate, untilDate string) ([]model.Transaction, error)
 	// DeleteTransaction deletes a transaction by its ID.
 	DeleteTransaction(transactionID string) error
+	// BankSync triggers a bank-sync process for all connected accounts.
+	BankSync() error
 }
 
 // httpClient implements the Client interface.
@@ -541,6 +543,22 @@ func (c *httpClient) DeleteTransaction(transactionID string) error {
 	}
 	defer resp.Body.Close()
 	c.logger.Debug("Successfully deleted transaction", "event", "DeleteTransactionSuccess", "transaction_id", transactionID)
+	return nil
+}
+
+// BankSync triggers a bank-sync process for all connected accounts.
+func (c *httpClient) BankSync() error {
+	url := fmt.Sprintf("%sbudgets/%s/accounts/banksync", c.config.BaseURL, c.config.BudgetID)
+	c.logger.Info("Triggering bank sync for all accounts", "event", "BankSyncStart")
+
+	resp, err := c.doRequest("POST", url, nil) // No body for this request
+	if err != nil {
+		// Error is already logged by doRequest
+		return fmt.Errorf("failed triggering bank sync: %w", err)
+	}
+	defer resp.Body.Close()
+
+	c.logger.Info("Successfully triggered bank sync", "event", "BankSyncSuccess")
 	return nil
 }
 
