@@ -31,6 +31,7 @@ type Payee struct {
 
 // Transaction represents a single financial transaction in Actual.
 type Transaction struct {
+	ID        string `json:"id,omitempty"`
 	Account   string `json:"account"`
 	Category  string `json:"category,omitempty"`
 	Amount    int    `json:"amount"` // Amount is in integer cents/smallest unit.
@@ -50,6 +51,11 @@ type CreateTransactionRequest struct {
 	RunTransfers    bool        `json:"runTransfers"`
 	Transaction     Transaction `json:"transaction"`
 	Date            string      `json:"date"`
+}
+
+// UpdateTransactionRequest is the request body for updating an existing transaction.
+type UpdateTransactionRequest struct {
+	Transaction Transaction `json:"transaction"`
 }
 
 // CreatePayeeRequest is the request body for creating a new payee.
@@ -112,6 +118,11 @@ type TransactionsResponse struct {
 // AccountsResponse is the API response for a list of accounts.
 type AccountsResponse struct {
 	Data []Account `json:"data"`
+}
+
+// AccountResponse is the API response for a single account.
+type AccountResponse struct {
+	Data Account `json:"data"`
 }
 
 // BalanceResponse is the API response for an account balance.

@@ -19,6 +19,8 @@ import (
 type Client interface {
 	// GetAccounts retrieves all accounts for the configured budget.
 	GetAccounts() ([]model.Account, error)
+	// GetAccount retrieves a single account by its ID.
+	GetAccount(accountID string) (model.Account, error)
 	// GetBalance retrieves the current balance for a specific account.
 	// The balance is returned as a float64, representing the value in the major currency unit (e.g., dollars).
 	GetBalance(accountID string) (float64, error)
@@ -43,6 +45,8 @@ type Client interface {
 	UpdateRule(ruleID string, rule model.Rule) error
 	// UpdateAccount updates the name of an existing account.
 	UpdateAccount(accountID string, newName string) error
+	// UpdateTransaction updates an existing transaction identified by its ID.
+	UpdateTransaction(transactionID string, transaction model.Transaction) error
 	// GetTransactions retrieves transactions for a specific account within a given date range.
 	// sinceDate and untilDate should be in "YYYY-MM-DD" format. They are optional.
 	GetTransactions(accountID, sinceDate, untilDate string) ([]model.Transaction, error)
@@ -346,6 +350,33 @@ func (c *httpClient) GetAccounts() ([]model.Account, error) {
 	return accounts.Data, nil
 }
 
+// GetAccount retrieves a single account by its ID.
+func (c *httpClient) GetAccount(accountID string) (model.Account, error) {
+	if accountID == "" {
+		err := fmt.Errorf("accountID cannot be empty for GetAccount")
+		c.logger.Error("Validation failed for GetAccount", "event", "ValidationError", "error", err)
+		return model.Account{}, err
+	}
+	url := fmt.Sprintf("%sbudgets/%s/accounts/%s",
+		c.config.BaseURL,
+		c.config.BudgetID,
+		accountID,
+	)
+	resp, err := c.doRequest("GET", url, nil)
+	if err != nil {
+		return model.Account{}, fmt.Errorf("failed getting account %s: %w", accountID, err)
+	}
+	defer resp.Body.Close()
+
+	var accountResponse model.AccountResponse
+	if err := json.NewDecoder(resp.Body).Decode(&accountResponse); err != nil {
+		c.logger.Error("Failed to decode account response", "event", "DecodeError", "url", url, "account_id", accountID, "error", err)
+		return model.Account{}, fmt.Errorf("decoding account response failed for account %s: %w", accountID, err)
+	}
+	c.logger.Debug("Successfully fetched account", "event", "GetAccountSuccess", "account_id", accountID, "account_name", accountResponse.Data.Name)
+	return accountResponse.Data, nil
+}
+
 // GetBalance retrieves the current balance for a specific account.
 // The balance is returned as a float64, representing the value in the major currency unit (e.g., dollars).
 func (c *httpClient) GetBalance(accountID string) (float64, error) {
@@ -482,6 +513,34 @@ func (c *httpClient) UpdateAccount(accountID string, newName string) error {
 	}
 	defer resp.Body.Close()
 	c.logger.Debug("Successfully updated account", "event", "UpdateAccountSuccess", "account_id", accountID)
+	return nil
+}
+
+// UpdateTransaction updates an existing transaction identified by its ID.
+func (c *httpClient) UpdateTransaction(transactionID string, transaction model.Transaction) error {
+	if transactionID == "" {
+		err := fmt.Errorf("transactionID cannot be empty for UpdateTransaction")
+		c.logger.Error("Validation failed for UpdateTransaction", "event", "ValidationError", "error", err)
+		return err
+	}
+	url := fmt.Sprintf("%sbudgets/%s/transactions/%s",
+		c.config.BaseURL,
+		c.config.BudgetID,
+		transactionID,
+	)
+	reqBody := model.UpdateTransactionRequest{Transaction: transaction}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		c.logger.Error("Failed to marshal UpdateTransaction request", "event", "MarshalError", "transaction_id", transactionID, "error", err)
+		return fmt.Errorf("marshaling UpdateTransaction request failed: %w", err)
+	}
+
+	resp, err := c.doRequest("PATCH", url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed updating transaction %s: %w", transactionID, err)
+	}
+	defer resp.Body.Close()
+	c.logger.Debug("Successfully updated transaction", "event", "UpdateTransactionSuccess", "transaction_id", transactionID)
 	return nil
 }
 
